@@ -5,6 +5,7 @@ from viral_video_bot import ViralVideoBot
 import logging
 import time
 import sys
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
