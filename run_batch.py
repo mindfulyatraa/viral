@@ -15,8 +15,8 @@ def run_batch():
     bot = ViralVideoBot()
     
     # Search for viral videos
-    logging.info("Searching for viral videos...")
-    viral_videos = bot.search_viral_videos_reddit()
+    logging.info("Searching for viral videos (YouTube/USA)...")
+    viral_videos = bot.search_viral_videos_youtube()
     
     if not viral_videos:
         logging.info("No new viral videos found.")
