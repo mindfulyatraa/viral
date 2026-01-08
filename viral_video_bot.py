@@ -179,10 +179,8 @@ class ViralVideoBot:
                 details = vid_response['items'][0]
                 
                 # Verify it's a Short (< 60s)
-                # Simple check: skip if duration string has 'M' (minutes) unless it's exactly 1 min
-                duration_str = details['contentDetails']['duration']
-                if "M" in duration_str and "PT1M0S" not in duration_str: 
-                     continue
+                # We rely on search(videoDuration='short') and our internal trimming
+                # Removing strict ISO parsing to handle PT1M correctly
                 
                 view_count = int(details['statistics'].get('viewCount', 0))
                 if view_count < self.config['min_views']:
