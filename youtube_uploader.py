@@ -146,30 +146,46 @@ class YouTubeUploader:
     
     def generate_title(self, original_title):
         """Generate catchy SEO-optimized YouTube title"""
-        # Clean title
-        clean_title = original_title.strip()
-        if len(clean_title) > 50:
-            clean_title = clean_title[:50] + "..."
+        import re
+        
+        # 1. Clean up Reddit jargon
+        clean_title = original_title
+        # Remove [OC], (f), [m], etc.
+        clean_title = re.sub(r'\[.*?\]', '', clean_title)
+        clean_title = re.sub(r'\(.*?\)', '', clean_title)
+        # Remove file extensions
+        clean_title = re.sub(r'\.mp4|\.mov|\.mkv', '', clean_title, flags=re.IGNORECASE)
+        # Remove common reddit phrases
+        clean_title = clean_title.replace("reddit", "").replace("title", "").strip()
+        
+        # 2. Smart Truncation
+        # YouTube max is 100 chars. We need space for " #Shorts" (8 chars) + hook (~20 chars)
+        # So keep title around 60-70 chars
+        if len(clean_title) > 65:
+            clean_title = clean_title[:62] + "..."
             
-        # Hook variations
+        # 3. Add Engagement Hook
         hooks = [
             "Wait for it... 😂",
-            "You Won't Believe This! 😱",
+            "Unexpected! 😱",
+            "So Satisfying 🤤",
             "Best Reaction! 🔥",
-            "Hilarious Moment 🤣",
-            "Must Watch! 👀"
+            "Hilarious 🤣",
+            "Watch till end! 👀",
+            "No way! 🤯"
         ]
         
-        # Select random hook
         import random
         hook = random.choice(hooks)
         
-        # Construct title
+        # 4. Construct Final Title
+        # Format: "Video Title - Hook #Shorts"
         final_title = f"{clean_title} - {hook} #Shorts"
         
-        # Ensure it fits limit
+        # Final safety check for length
         if len(final_title) > 100:
-            final_title = final_title[:100]
+            # If too long, drop the hook, keep title + #Shorts
+            final_title = f"{clean_title} #Shorts"
             
         return final_title
     

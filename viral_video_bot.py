@@ -158,50 +158,48 @@ class ViralVideoBot:
             return False
     
     def create_text_overlay(self, duration, width, height):
-        """Create text overlay with fixed text 'Wait for it... 😂' using PIL"""
+        """Create text overlay with 'Wait for it...' on a black bar between videos"""
         try:
-            # Fixed text for all videos
-            caption_text = "Wait for it... 😂"
+            # Fixed text
+            caption_text = "Wait for it..."
+            reaction_split_point = int(height * 0.4)  # 512px point
             
-            # Create transparent image for text
-            img = Image.new('RGBA', (width, 200), (0, 0, 0, 0))
+            # Create black strip image
+            # Width: full video width (720)
+            # Height: 80 pixels
+            strip_height = 80
+            img = Image.new('RGBA', (width, strip_height), (0, 0, 0, 255))
             draw = ImageDraw.Draw(img)
             
-            # Try to use Arial Bold, fallback to default
+            # Font settings
             try:
-                font = ImageFont.truetype("arialbd.ttf", 80)
+                # Use standard Arial
+                font = ImageFont.truetype("arial.ttf", 50)
             except:
-                try:
-                    font = ImageFont.truetype("arial.ttf", 80)
-                except:
-                    font = ImageFont.load_default()
+                font = ImageFont.load_default()
             
-            # Get text size for centering
+            # Get text size to center it in the strip
             bbox = draw.textbbox((0, 0), caption_text, font=font)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
             
-            # Calculate position (centered)
-            x = (width - text_width) // 2
-            y = 60
+            # Center text in the black strip
+            text_x = (width - text_width) // 2
+            text_y = (strip_height - text_height) // 2 - 5 # Small adjustment
             
-            # Draw text with black outline (stroke effect)
-            outline_range = 4
-            for adj_x in range(-outline_range, outline_range + 1):
-                for adj_y in range(-outline_range, outline_range + 1):
-                    draw.text((x + adj_x, y + adj_y), caption_text, font=font, fill='black')
+            # Draw simple white text
+            draw.text((text_x, text_y), caption_text, font=font, fill='white')
             
-            # Draw white text on top
-            draw.text((x, y), caption_text, font=font, fill='white')
-            
-            # Convert PIL image to numpy array for moviepy
+            # Convert to moviepy clip
             img_array = np.array(img)
-            
-            # Create ImageClip from array
             txt_clip = ImageClip(img_array, duration=duration)
-            txt_clip = txt_clip.set_position(('center', 0))
             
-            logging.info("Text overlay created successfully with PIL")
+            # Position: Centered on the split line
+            # y = 512 - (80/2) = 472
+            y_pos = reaction_split_point - (strip_height // 2)
+            txt_clip = txt_clip.set_position(('center', y_pos))
+            
+            logging.info("Text separator created successfully")
             return txt_clip
             
         except Exception as e:
