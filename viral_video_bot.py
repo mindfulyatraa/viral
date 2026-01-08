@@ -11,6 +11,7 @@ import random
 from moviepy.editor import VideoFileClip, concatenate_videoclips, CompositeVideoClip, ImageClip
 from moviepy.video.fx.resize import resize
 from PIL import Image, ImageDraw, ImageFont
+import yt_dlp
 import numpy as np
 
 # Configure logging
