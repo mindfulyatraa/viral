@@ -14,7 +14,7 @@ from googleapiclient.http import MediaFileUpload
 import logging
 
 # YouTube API scopes
-SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
+SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 TOKEN_FILE = 'youtube_token.pickle'
 CREDENTIALS_FILE = 'client_secrets.json'
 
