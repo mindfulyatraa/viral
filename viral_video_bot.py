@@ -226,6 +226,7 @@ class ViralVideoBot:
                 clients_to_try = [['android'], ['ios'], ['web_creator'], ['mweb']]
                 
                 for client in clients_to_try:
+                    time.sleep(2) # Wait 2s between attempts
                     logging.info(f"Trying download with client: {client[0]}...")
                     ydl_opts = {
                         'format': 'best[ext=mp4]',
@@ -237,10 +238,17 @@ class ViralVideoBot:
                         'socket_timeout': 30,
                     }
                     
-                    # Use cookies if available (Bypasses Bot Check)
+                    # Use cookies if available
                     if os.path.exists('cookies.txt'):
-                        ydl_opts['cookiefile'] = 'cookies.txt'
-                        
+                        file_size = os.path.getsize('cookies.txt')
+                        if file_size > 0:
+                            logging.info(f"Using cookies.txt (Size: {file_size} bytes)")
+                            ydl_opts['cookiefile'] = 'cookies.txt'
+                        else:
+                            logging.warning("cookies.txt exists but is empty")
+                    else:
+                        logging.warning("cookies.txt NOT found")
+
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             ydl.download([video_info['url']])
