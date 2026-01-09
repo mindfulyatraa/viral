@@ -383,6 +383,22 @@ class ViralVideoBot:
                 }
                 
                 try:
+                    # Strategy for v.redd.it: Try HLS playlist FIRST (more robust vs blocks)
+                    if "v.redd.it" in video_info['url']:
+                        try:
+                            # Construct HLS URL locally
+                            hls_url = video_info['url'].rstrip('/') + "/HLSPlaylist.m3u8"
+                            logging.info(f"Prioritizing HLS playlist download for v.redd.it: {hls_url}")
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                ydl.download([hls_url])
+                            
+                            if os.path.exists(output_path):
+                                logging.info(f"Downloaded successfully via HLS: {output_path}")
+                                return True
+                        except Exception as hls_e:
+                            logging.warning(f"HLS download failed: {hls_e}. Falling back to standard URL...")
+                    
+                    # Standard download (Fallback for HLS failure OR non-v.redd.it links)
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([video_info['url']])
                     
@@ -394,22 +410,6 @@ class ViralVideoBot:
                         return False
                         
                 except Exception as e:
-                    logging.warning(f"Standard download failed: {e}. Trying HLS fallback...")
-                    # Fallback: Try downloading HLS playlist directly if likely v.redd.it
-                    if "v.redd.it" in video_info['url']:
-                        try:
-                            # HLS/DASH URLs usually look like base + HLSPlaylist.m3u8
-                            hls_url = video_info['url'].rstrip('/') + "/HLSPlaylist.m3u8"
-                            logging.info(f"Attempting HLS fallback: {hls_url}")
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                                ydl.download([hls_url])
-                            
-                            if os.path.exists(output_path):
-                                logging.info("HLS Fallback successful!")
-                                return True
-                        except Exception as hls_e:
-                            logging.error(f"HLS Fallback failed: {hls_e}")
-
                     if "Sign in to confirm" in str(e) and not proxy_url:
                         logging.warning("Bot detection triggered. Consider adding PROXY_URL secret for YouTube downloads.")
                         logging.info("Tip: Set PROXY_URL in GitHub Secrets (format: http://user:pass@proxy.com:port)")
