@@ -426,16 +426,17 @@ def auto_mode():
     print(f"\n{'='*70}\n🤖 AUTO MODE STARTED\n{'='*70}")
     
     # 1. Search & Download Content
-    queries = ["funny cat shorts", "cute dog shorts", "satisfying video", "funny viral clips"]
+    queries = ["funny cat shorts #shorts", "cute dog shorts #shorts", "satisfying video #shorts", "funny viral clips #shorts"]
     query = random.choice(queries)
     print(f"🔍 Searching for: {query}")
     
-    search_query = f"ytsearch20:{query}"
+    search_query = f"ytsearch50:{query}"
     download_path = os.path.join(Config.DOWNLOADS_FOLDER, "auto_video.mp4")
     archive_file = "downloaded_videos.txt"
     
     cmd = [
         "yt-dlp",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
         "--match-filter", "duration < 59",
         "-o", download_path,
         "--no-playlist",
