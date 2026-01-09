@@ -426,11 +426,13 @@ def auto_mode():
     print(f"\n{'='*70}\n🤖 AUTO MODE STARTED\n{'='*70}")
     
     # 1. Search & Download Content
-    queries = ["funny cat shorts #shorts", "cute dog shorts #shorts", "satisfying video #shorts", "funny viral clips #shorts"]
-    query = random.choice(queries)
-    print(f"🔍 Searching for: {query}")
+    queries = ["funny cat", "cute dog", "satisfying video", "viral funny clips"]
+    query_term = random.choice(queries)
+    # sp=EgQIARAA applies the "Shorts" filter on YouTube
+    search_url = f"https://www.youtube.com/results?search_query={query_term.replace(' ', '+')}&sp=EgQIARAA"
     
-    search_query = f"ytsearch50:{query}"
+    print(f"🔍 Searching for Shorts: {query_term}")
+    
     download_path = os.path.join(Config.DOWNLOADS_FOLDER, "auto_video.mp4")
     archive_file = "downloaded_videos.txt"
     
@@ -443,7 +445,7 @@ def auto_mode():
         "--max-downloads", "1",
         "--force-overwrites",
         "--download-archive", archive_file,
-        search_query
+        search_url
     ]
     subprocess.run(cmd, check=False)
     
