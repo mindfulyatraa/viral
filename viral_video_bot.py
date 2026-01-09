@@ -32,6 +32,7 @@ class ViralVideoBot:
         self.processed_videos = self.load_processed_list()
         self.reaction_videos = self.get_reaction_videos()
         self.youtube_uploader = None
+        self.ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
         
         # Initialize YouTube uploader if enabled
         if 'youtube' in self.config.get('upload_platforms', []):
