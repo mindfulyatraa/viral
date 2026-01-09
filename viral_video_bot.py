@@ -320,7 +320,8 @@ def auto_mode():
         
         # 1. Acquire Content (Auto-Search)
         print("🔍 Searching for viral content...")
-        queries = ["funny cat shorts", "cute dog shorts", "funny pets reaction", "oddly satisfying pets"]
+        # Removed "oddly satisfying pets" as it returns long compilations
+        queries = ["funny cat shorts", "cute dog shorts", "funny pets reaction"]
         query = random.choice(queries)
         
         search_query = f"ytsearch5:{query}"
@@ -336,11 +337,38 @@ def auto_mode():
             "--force-overwrites",
             search_query
         ]
-        subprocess.run(cmd, check=True)
+        # check=False because yt-dlp returns non-zero when max-downloads is reached
+        subprocess.run(cmd, check=False) 
         
         if not os.path.exists(download_path):
             print("❌ Auto-download failed")
             return
+            
+        # 1.5 Get Video Metadata (Advanced SEO)
+        print("📊 Fetching metadata for Advanced SEO...")
+        try:
+            # Get JSON metadata for the downloaded video (or the search result)
+            # We use the search query again to get info, or rely on file metadata if possible.
+            # Best way: Use yt-dlp to dump json for the search query to capture Title/Tags
+            meta_cmd = [
+                sys.executable, "-m", "yt_dlp", 
+                "--dump-json", 
+                "--no-playlist",
+                "--max-downloads", "1", 
+                search_query
+            ]
+            meta_result = subprocess.run(meta_cmd, capture_output=True, text=True, check=False)
+            import json
+            video_info = json.loads(meta_result.stdout.split('\n')[0]) # First line is usually the json
+            
+            source_title = video_info.get('title', query.title())
+            source_tags = video_info.get('tags', [])
+            
+            print(f"✅ Source Title: {source_title}")
+        except Exception as e:
+            print(f"⚠️ Metadata fetch failed: {e}. Using generic SEO.")
+            source_title = query.title()
+            source_tags = []
 
         # 2. Select Assets
         reaction_video = get_random_file(Config.REACTIONS_FOLDER)
@@ -367,14 +395,30 @@ def auto_mode():
             output_path
         )
         
-        # 5. Upload to YouTube
+        # 5. Upload to YouTube (ADVANCED SEO)
         if result_path:
             print("🚀 Ready to upload...")
-            title = f"{query.title()} - {random.choice(['Funny Reaction', 'Must Watch', 'Viral Shorts'])} #shorts"
-            description = f"{commentary}\n\n#shorts #funny #pets #reaction"
-            tags = ["shorts", "funny", "pets", "reaction", "viral"]
             
-            upload_video(result_path, title, description, tags)
+            # Smart Title Generation
+            # "Reaction to [Source Title] - [Hook] #shorts"
+            clean_source_title = source_title.split('#')[0].strip()[:50] # Clean up
+            hooks = ['Wait for it!', 'Hilarious!', 'Too Cute!', 'Reaction']
+            final_title = f"{clean_source_title} - {random.choice(hooks)} 😲 #shorts"
+            
+            # Smart Description
+            description = (
+                f"{commentary}\n\n"
+                f"My reaction to this amazing video: {clean_source_title}\n\n"
+                f"Subscribe for more satisfying and funny reactions!\n\n"
+                f"#shorts #funny #pets #reaction #viral { ' '.join(['#'+t.replace(' ','') for t in source_tags[:5]]) }"
+            )
+            
+            # Smart Tags
+            base_tags = ["shorts", "funny", "pets", "reaction", "viral", "trending"]
+            combined_tags = list(set(base_tags + source_tags[:10])) # Unique tags
+            
+            print(f"📝 Title: {final_title}")
+            upload_video(result_path, final_title, description, combined_tags)
             
     except Exception as e:
         print(f"❌ Auto Mode Error: {str(e)}")
