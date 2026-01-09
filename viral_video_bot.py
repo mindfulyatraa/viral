@@ -294,15 +294,18 @@ class ViralVideoBot:
             if video_info['source'] == 'reddit':
                 ydl_opts = {
                     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                    'outtmpl': str(output_path),
+                    'outtmpl': output_path,
+                    'quiet': True,
+                    'no_warnings': True,
                     'overwrites': True,
                     'socket_timeout': 30,
-                    'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe(),
+                    # Explicitly point to the bundled ffmpeg
+                    'ffmpeg_location': self.ffmpeg_path,
+                    # CRITICAL: Use browser user-agent for download request to avoid 403
                     'http_headers': {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
-                        'Referer': 'https://www.reddit.com/',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Referer': 'https://www.reddit.com/'
                     }
                 }
                 
