@@ -232,8 +232,9 @@ class ViralVideoBot:
                         'format': 'best[ext=mp4]',
                         'outtmpl': str(output_path),
                         'overwrites': True,
-                        'quiet': True,
-                        'no_warnings': True,
+                        'quiet': False, # Changed to False for debug
+                        'verbose': True, # Added verbose for deep debug
+                        'no_warnings': False, # Show warnings
                         'extractor_args': {'youtube': {'player_client': [client]}},
                         'socket_timeout': 30,
                     }
