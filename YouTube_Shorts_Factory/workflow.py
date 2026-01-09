@@ -447,14 +447,14 @@ def auto_mode():
     subprocess.run(cmd, check=False)
     
     if not os.path.exists(download_path):
-        print("❌ Auto-download failed")
-        return
+        print("❌ Auto-download failed! (Check if video was already in archive or yt-dlp error)")
+        sys.exit(1) # Fail the workflow
 
     # 2. Get Assets
     reaction_video = get_random_file(Config.REACTIONS_FOLDER, [".mp4", ".mov", ".avi"])
     if not reaction_video:
         print("❌ No reaction videos found! Upload some to assets/reactions/ in your repo.")
-        return
+        sys.exit(1)
         
     music_file = get_random_file(Config.MUSIC_FOLDER, [".mp3", ".wav"])
     if not music_file:
@@ -463,6 +463,10 @@ def auto_mode():
          d = SafeMusicDownloader()
          d.download_music(1, 0)
          music_file = get_random_file(Config.MUSIC_FOLDER, [".mp3", ".wav"])
+    
+    # Check music again
+    if not music_file:
+        print("⚠️ No music found even after download attempt. Proceeding without music.")
 
     # 3. Process
     commentary = "Wait for it! This is amazing. 😱 #shorts"
@@ -471,13 +475,21 @@ def auto_mode():
     
     result = process_video(download_path, reaction_video, music_file, None, output_path)
     
+    if not result:
+        print("❌ Video processing failed!")
+        sys.exit(1)
+
     # 4. Upload
-    if result:
-         print("\n🚀 AUTO-UPLOADING TO YOUTUBE...")
-         title = f"Amazing Reaction! 😱 #shorts #viral"
-         description = f"{commentary}\n\nSubscribe for more!\n#shorts #reaction #viral"
-         tags = ["shorts", "reaction", "viral", "funny"]
-         upload_video(result, title, description, tags)
+    print("\n🚀 AUTO-UPLOADING TO YOUTUBE...")
+    title = f"Amazing Reaction! 😱 #shorts #viral"
+    description = f"{commentary}\n\nSubscribe for more!\n#shorts #reaction #viral"
+    tags = ["shorts", "reaction", "viral", "funny"]
+    
+    video_id = upload_video(result, title, description, tags)
+    
+    if not video_id:
+        print("❌ Upload failed!")
+        sys.exit(1)
     
     print("\n✅ Auto Mode Finished")
 
