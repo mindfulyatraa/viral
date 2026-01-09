@@ -319,9 +319,14 @@ def auto_mode():
         print("🤖 STARTING AUTO MODE...")
         
         # 1. Acquire Content (Auto-Search)
-        print("🔍 Searching for viral content...")
-        # Removed "oddly satisfying pets" as it returns long compilations
-        queries = ["funny cat shorts", "cute dog shorts", "funny pets reaction"]
+        print("🔍 Searching for viral content (YouTube)...")
+        # Updated to "Viral Animals" as per user request
+        queries = [
+            "viral funny animal shorts", 
+            "cute animals funny moments shorts", 
+            "wild animals funny shorts",
+            "viral pet reaction shorts"
+        ]
         query = random.choice(queries)
         
         search_query = f"ytsearch5:{query}"
