@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.part
+*.ytdl
+downloads/
+output/
+temp/
+client_secrets.json
+youtube_token.pickle
+.env

@@ -1,0 +1,13 @@
+moviepy>=1.0.3
+edge-tts>=6.1.9
+yt-dlp>=2023.12.30
+imageio>=2.33.1
+numpy>=1.26.3
+pillow>=10.2.0
+regex
+decorator
+tqdm
+scipy
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
