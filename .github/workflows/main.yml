@@ -46,7 +46,7 @@ jobs:
 
         # Create cookies.txt if secret exists
         if [ -n "$YOUTUBE_COOKIES" ]; then
-          echo "$YOUTUBE_COOKIES" > cookies.txt
+          printf "%s" "$YOUTUBE_COOKIES" > cookies.txt
         fi
 
     - name: Run Bot Batch

@@ -223,18 +223,18 @@ class ViralVideoBot:
             
             # For YouTube videos
             elif video_info['source'] == 'youtube':
-                clients_to_try = [['android'], ['ios'], ['web_creator'], ['mweb']]
+                clients_to_try = ['android', 'ios', 'web_creator', 'mweb']
                 
                 for client in clients_to_try:
                     time.sleep(2) # Wait 2s between attempts
-                    logging.info(f"Trying download with client: {client[0]}...")
+                    logging.info(f"Trying download with client: {client}...")
                     ydl_opts = {
                         'format': 'best[ext=mp4]',
                         'outtmpl': str(output_path),
                         'overwrites': True,
                         'quiet': True,
                         'no_warnings': True,
-                        'extractor_args': {'youtube': {'player_client': client}},
+                        'extractor_args': {'youtube': {'player_client': [client]}},
                         'socket_timeout': 30,
                     }
                     
