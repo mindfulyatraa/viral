@@ -159,9 +159,9 @@ class ViralVideoBot:
                                 video_info = {
                                     'id': video_id,
                                     'title': title,
-                                    'url': permalink,
-                                    'direct_url': direct_url,
-                                    'score': 10000, 
+                                    'url': permalink,  # Use permalink for yt-dlp
+                                    'direct_url': direct_url,  # Keep for reference
+                                    'score': 10000,
                                     'source': 'reddit',
                                     'subreddit': subreddit
                                 }
@@ -255,148 +255,29 @@ class ViralVideoBot:
         return video_list
     
     def download_video(self, video_info, output_path):
-        """Direct download without yt-dlp - works on GitHub Actions"""
-        import subprocess
-        
+        """Download video using yt-dlp for reliable access"""
         try:
-            # Handle YouTube videos separately if needed (using yt-dlp for YT is fine)
-            if 'youtube.com' in video_info.get('url', '') or 'youtu.be' in video_info.get('url', ''):
-                # Use existing yt-dlp logic for YouTube ONLY
-                logging.info("YouTube video detected, using yt-dlp...")
-                ydl_opts = {
-                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                    'outtmpl': output_path,
-                    'quiet': True,
-                    'ffmpeg_location': self.ffmpeg_path,
+            # Use yt-dlp for all videos (Reddit, YouTube, etc.)
+            logging.info(f"Downloading video: {video_info.get('url', video_info.get('direct_url'))}")
+
+            ydl_opts = {
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'outtmpl': output_path,
+                'quiet': True,
+                'no_warnings': True,
+                'ffmpeg_location': self.ffmpeg_path,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([video_info['url']])
-                return os.path.exists(output_path)
-
-            direct_url = video_info.get('direct_url')
-            if not direct_url and 'v.redd.it' in video_info.get('url', ''):
-                # Fallback: if we just have a v.redd.it url but not the DASH url
-                direct_url = video_info['url']
-                if not direct_url.endswith('.mp4'):
-                     direct_url += '/DASH_720.mp4'
-
-            if not direct_url:
-                logging.error("No direct URL found for Reddit video")
-                return False
-            
-            logging.info(f"Direct download from: {direct_url}")
-            
-            # Setup headers to mimic browser
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Range': 'bytes=0-',
-                'Referer': 'https://www.reddit.com/',
-                'Origin': 'https://www.reddit.com'
             }
-            
-            # Create session with retries
-            session = requests.Session()
-            adapter = requests.adapters.HTTPAdapter(max_retries=3)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
-            
-            # Download video stream
-            logging.info("Starting download...")
-            response = session.get(direct_url, headers=headers, stream=True, timeout=60)
-            
-            if response.status_code in [200, 206]:
-                with open(output_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk: f.write(chunk)
-                
-                # Download Audio
-                audio_url = direct_url.replace('DASH_720.mp4', 'DASH_audio.mp4')
-                # Handle generic replacement if 720 not in name
-                if 'DASH_audio.mp4' not in audio_url:
-                     audio_url = direct_url.rsplit('/', 1)[0] + '/DASH_audio.mp4'
 
-                audio_path = str(output_path).replace('.mp4', '_audio.mp4')
-                
-                try:
-                    logging.info(f"Downloading audio: {audio_url}")
-                    audio_res = session.get(audio_url, headers=headers, stream=True, timeout=30)
-                    
-                    if audio_res.status_code == 200:
-                        with open(audio_path, 'wb') as f:
-                            for chunk in audio_res.iter_content(chunk_size=8192):
-                                if chunk: f.write(chunk)
-                        
-                        logging.info("Merging audio...")
-                        temp_output = str(output_path).replace('.mp4', '_merged.mp4')
-                        
-                        # Merge using ffmpeg
-                        cmd = [
-                            self.ffmpeg_path, '-i', output_path, '-i', audio_path,
-                            '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental',
-                            '-y', temp_output
-                        ]
-                        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        
-                        # Replace
-                        if os.path.exists(temp_output):
-                            os.remove(output_path)
-                            os.rename(temp_output, output_path)
-                            os.remove(audio_path)
-                            logging.info("Merge successful")
-                    else:
-                        logging.warning("No audio track found")
-                        
-                except Exception as e:
-                    # Non-fatal audio error
-                    logging.warning(f"Audio merge failed: {e}")
-                    if os.path.exists(audio_path): os.remove(audio_path)
-                
-                return True
-                
-            elif response.status_code == 403:
-                logging.error("403 Forbidden on direct download. Trying FFmpeg with HLS Playlist...")
-                
-                # Fallback: Use FFmpeg to download HLS stream directly
-                # This bypasses direct file blocks and handles the playlist
-                if 'v.redd.it' in direct_url:
-                    try:
-                        # Construct HLS URL (base check)
-                        base_url = direct_url.split('/DASH')[0]
-                        hls_url = f"{base_url}/HLSPlaylist.m3u8"
-                        
-                        logging.info(f"Attempting HLS download via FFmpeg: {hls_url}")
-                        
-                        # Fix for Linux: remove -headers (can cause parsing issues), trust -user_agent
-                        # Add -loglevel error to capture real failure reason if any
-                        cmd = [
-                            self.ffmpeg_path,
-                            '-loglevel', 'error',
-                            '-user_agent', headers['User-Agent'],
-                            '-i', hls_url,
-                            '-c', 'copy', 
-                            '-bsf:a', 'aac_adtstoasc',
-                            '-y', output_path
-                        ]
-                        
-                        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-                        
-                        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                            logging.info(f"✓ HLS Download successful: {output_path}")
-                            return True
-                    except subprocess.CalledProcessError as e:
-                        logging.error(f"FFmpeg HLS download failed: {e.stderr}")
-                    except Exception as e:
-                        logging.error(f"HLS fallback error: {e}")
-                
-                return False
-            else:
-                logging.error(f"Download failed: {response.status_code}")
-                return False
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([video_info.get('url', video_info.get('direct_url'))])
+
+            return os.path.exists(output_path) and os.path.getsize(output_path) > 0
 
         except Exception as e:
-            logging.error(f"Download error: {str(e)}")
+            logging.error(f"Download error with yt-dlp: {str(e)}")
             return False
     
     def create_text_overlay(self, duration, width, height):
