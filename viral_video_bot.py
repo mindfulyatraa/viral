@@ -100,39 +100,75 @@ class ViralVideoBot:
         
         for subreddit in self.config['reddit_subreddits']:
             try:
-                # Reddit API endpoint (public JSON)
-                url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit=10"
-                # Use browser user-agent to avoid 429/403 errors
-                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+                # Use old.reddit.com for easier HTML parsing
+                url = f"https://old.reddit.com/r/{subreddit}/top/?t=day"
                 
-                response = requests.get(url, headers=headers, timeout=10)
+                # Robust browser headers
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Referer': 'https://www.google.com/'
+                }
                 
-                if response.status_code != 200:
-                    logging.warning(f"Reddit API returned status {response.status_code} for r/{subreddit}")
-                    continue
-                    
+                response = requests.get(url, headers=headers, timeout=15)
+                
                 if response.status_code == 200:
-                    data = response.json()
+                    import re
+                    # Regex to find posts with data-url (media) and data-permalink
+                    # Look for things that are videos (v.redd.it or youtube)
                     
-                    for post in data['data']['children']:
-                        post_data = post['data']
+                    # Pattern for post elements in old reddit
+                    # We look for <div class="... thing ..." data-url="..." data-permalink="...">
+                    
+                    # Simple regex to find data blocks
+                    matches = re.finditer(r'data-url="(?P<url>[^"]+)"[^>]*data-permalink="(?P<permalink>[^"]+)"[^>]*data-score="(?P<score>\d+)"[^>]*data-promoted="false"', response.text)
+                    
+                    for match in matches:
+                        video_url = match.group('url')
+                        permalink = match.group('permalink')
+                        score = int(match.group('score'))
                         
-                        # Check if it's a video and meets criteria
-                        if post_data.get('is_video') and post_data['score'] > self.config['min_views']:
-                            video_info = {
-                                'id': post_data['id'],
-                                'title': post_data['title'],
-                                'url': f"https://www.reddit.com{post_data['permalink']}",
-                                'score': post_data['score'],
-                                'source': 'reddit',
-                                'subreddit': subreddit
-                            }
+                        # Filter criteria
+                        if score < self.config['min_views']:
+                            continue
                             
-                            if video_info['id'] not in self.processed_videos:
-                                viral_videos.append(video_info)
-                                logging.info(f"Found viral video: {post_data['title'][:50]}...")
-                
-                time.sleep(2)  # Rate limiting
+                        # Must be a video link
+                        if 'v.redd.it' not in video_url and 'youtube.com' not in video_url and 'youtu.be' not in video_url:
+                            continue
+                            
+                        # Extract title (this is harder with regex, let's grab it from the link text if possible, or just use permalink as ID)
+                        # Actually for old reddit, title is in <a class="title ...">...</a> inside the thing div. 
+                        # Let's try to extract title from the HTML block around the match if possible, or simpler: 
+                        # Just accept we have the ID/URL. Title is secondary for processing (yt-dlp will get it).
+                        
+                        video_info = {
+                            'id': permalink.split('/')[-2],
+                            'title': f"Viral Video {permalink.split('/')[-2]}", # Temp title
+                            'url': f"https://www.reddit.com{permalink}",
+                            'score': score,
+                            'source': 'reddit',
+                            'subreddit': subreddit
+                        }
+                        
+                        # Try to find real title
+                        try:
+                            # Re-search for title relative to this permalink
+                            title_pattern = f'href="{permalink}"[^>]*>(?P<title>[^<]+)</a>'
+                            title_match = re.search(title_pattern, response.text)
+                            if title_match:
+                                video_info['title'] = title_match.group('title')
+                        except:
+                            pass
+
+                        if video_info['id'] not in self.processed_videos:
+                            viral_videos.append(video_info)
+                            logging.info(f"Found viral video: {video_info['title'][:50]}... (Score: {score})")
+
+                else:
+                    logging.warning(f"Reddit HTML scrape failed: {response.status_code} for r/{subreddit}")
+                    
+                time.sleep(2)
                 
             except Exception as e:
                 logging.error(f"Error searching Reddit r/{subreddit}: {str(e)}")
