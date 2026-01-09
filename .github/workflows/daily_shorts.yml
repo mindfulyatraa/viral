@@ -28,10 +28,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: Restore Credentials from Secrets
+      env:
+        CLIENT_SECRETS: ${{ secrets.CLIENT_SECRETS_JSON }}
+        YOUTUBE_TOKEN: ${{ secrets.YOUTUBE_TOKEN_BASE64 }}
+      run: |
+        echo "$CLIENT_SECRETS" > client_secrets.json
+        python -c "import base64, os; open('youtube_token.pickle', 'wb').write(base64.b64decode(os.environ['YOUTUBE_TOKEN']))"
+
     - name: Run Viral Video Bot
       env:
-        # If we use secrets in future, map them here. 
-        # For now, relying on committed files as per user "send everything" request.
         PYTHONUNBUFFERED: 1
       run: |
         python viral_video_bot.py --auto
