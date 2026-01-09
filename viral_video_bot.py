@@ -221,47 +221,29 @@ class ViralVideoBot:
                     logging.info(f"Downloaded successfully: {output_path}")
                     return True
             
-            # For YouTube videos
+            # For YouTube videos - use android client (no cookies needed)
             elif video_info['source'] == 'youtube':
-                clients_to_try = ['android', 'ios', 'web_creator', 'mweb']
+                ydl_opts = {
+                    'format': 'best[ext=mp4]',
+                    'outtmpl': str(output_path),
+                    'overwrites': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android'],  # Android works without cookies
+                        }
+                    },
+                    'socket_timeout': 30,
+                }
                 
-                for client in clients_to_try:
-                    time.sleep(2) # Wait 2s between attempts
-                    logging.info(f"Trying download with client: {client}...")
-                    ydl_opts = {
-                        'format': 'best[ext=mp4]',
-                        'outtmpl': str(output_path),
-                        'overwrites': True,
-                        'quiet': False, # Changed to False for debug
-                        'verbose': True, # Added verbose for deep debug
-                        'no_warnings': False, # Show warnings
-                        'extractor_args': {'youtube': {'player_client': [client]}},
-                        'socket_timeout': 30,
-                    }
-                    
-                    # Use cookies if available
-                    if os.path.exists('cookies.txt'):
-                        file_size = os.path.getsize('cookies.txt')
-                        if file_size > 0:
-                            logging.info(f"Using cookies.txt (Size: {file_size} bytes)")
-                            ydl_opts['cookiefile'] = 'cookies.txt'
-                        else:
-                            logging.warning("cookies.txt exists but is empty")
-                    else:
-                        logging.warning("cookies.txt NOT found")
-
-                    try:
-                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            ydl.download([video_info['url']])
-                        if os.path.exists(output_path):
-                            logging.info(f"Downloaded successfully with {client[0]}: {output_path}")
-                            return True
-                    except Exception as e:
-                        logging.error(f"Failed with {client[0]}: {e}")
-                        continue
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_info['url']])
                 
-                logging.error("All download attempts failed.")
-                return False
+                if os.path.exists(output_path):
+                    logging.info(f"Downloaded successfully: {output_path}")
+                    return True
+                else:
+                    logging.error("Download failed - file not created")
+                    return False
             
             return False
             

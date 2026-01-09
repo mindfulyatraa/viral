@@ -44,11 +44,6 @@ jobs:
         # Create youtube_token.pickle from base64 secret
         echo "$YOUTUBE_TOKEN_PICKLE" | base64 -d > youtube_token.pickle
 
-        # Create cookies.txt if secret exists
-        if [ -n "$YOUTUBE_COOKIES" ]; then
-          printf "%s" "$YOUTUBE_COOKIES" > cookies.txt
-        fi
-
     - name: Run Bot Batch
       run: python run_batch.py
 
