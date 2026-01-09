@@ -150,19 +150,28 @@ class ViralVideoBot:
                             if link_elem is not None:
                                 permalink = link_elem.attrib.get('href', '')
                                 
-                                # We have the post URL. 
-                                # In RSS, "score" is not easily available in attributes.
-                                # But we requested "top", so these ARE the top videos.
-                                # We trust the sort.
+                                # Try to find DIRECT video url in content to bypass Reddit API 403
+                                direct_url = None
+                                content_elem = entry.find('atom:content', namespace)
+                                if content_elem is None:
+                                    content_elem = entry.find('{http://www.w3.org/2005/Atom}content')
                                 
-                                # Generate ID from URL
-                                # URL ex: https://www.reddit.com/r/funny/comments/1q7b9sv/title/
+                                if content_elem is not None and content_elem.text:
+                                    import re
+                                    # Look for v.redd.it or youtube links in the content HTML
+                                    # This avoids yt-dlp needing to scape the reddit post (which is blocked)
+                                    # Regex for v.redd.it or youtube
+                                    match = re.search(r'(https?://v\.redd\.it/[\w]+|https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+|https?://youtu\.be/[\w-]+)', content_elem.text)
+                                    if match:
+                                        direct_url = match.group(1)
+                                        logging.info(f"Resolved direct video URL from RSS: {direct_url}")
+                                
+                                # Generate ID
                                 try:
                                     parts = permalink.split('/comments/')
                                     if len(parts) > 1:
                                         vid_id = parts[1].split('/')[0]
                                     else:
-                                        # Fallback ID generation
                                         vid_id = str(abs(hash(permalink)))[:8]
                                 except:
                                     vid_id = str(abs(hash(permalink)))[:8]
@@ -170,15 +179,24 @@ class ViralVideoBot:
                                 video_info = {
                                     'id': vid_id,
                                     'title': title,
-                                    'url': permalink,
-                                    'score': 10000, # Dummy high score since it's from top list
+                                    'url': direct_url if direct_url else permalink,
+                                    'score': 10000, 
                                     'source': 'reddit',
                                     'subreddit': subreddit
                                 }
                                 
-                                if video_info['id'] not in self.processed_videos:
+                                # Only add if we have a direct URL or it's a youtube link (which permalink is valid for? No, permalink is reddit post)
+                                # Actually, if we use permalink, yt-dlp fails.
+                                # So we should STRONGLY prefer direct_url.
+                                # If no direct_url found in RSS, we skip it to avoid 403 error loops.
+                                
+                                if direct_url and video_info['id'] not in self.processed_videos:
                                     viral_videos.append(video_info)
                                     logging.info(f"Found viral video (RSS): {title[:50]}...")
+                                else:
+                                    # Debug log why skipped
+                                    if not direct_url:
+                                        logging.debug(f"Skipped {title[:30]} - No direct video link found in RSS")
                                     
                     except ET.ParseError as e:
                         logging.error(f"Error parsing RSS XML for r/{subreddit}: {e}")
