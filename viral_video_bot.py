@@ -319,18 +319,14 @@ def auto_mode():
         print("🤖 STARTING AUTO MODE...")
         
         # 1. Acquire Content (Auto-Search)
-        print("🔍 Searching for viral content (YouTube)...")
-        # Updated to "Viral Animals" as per user request
-        queries = [
-            "viral funny animal shorts", 
-            "cute animals funny moments shorts", 
-            "wild animals funny shorts",
-            "viral pet reaction shorts"
-        ]
+        print("🔍 Searching for viral content...")
+        # Removed "oddly satisfying pets" as it returns long compilations
+        queries = ["funny cat shorts", "cute dog shorts", "funny pets reaction"]
         query = random.choice(queries)
         
-        search_query = f"ytsearch5:{query}"
+        search_query = f"ytsearch20:{query}"
         download_path = os.path.join(Config.DOWNLOADS_FOLDER, "auto_video.mp4")
+        archive_file = "downloaded_videos.txt"
         
         # Custom download for search
         cmd = [
@@ -340,6 +336,7 @@ def auto_mode():
             "--no-playlist",
             "--max-downloads", "1",
             "--force-overwrites",
+            "--download-archive", archive_file,
             search_query
         ]
         # check=False because yt-dlp returns non-zero when max-downloads is reached
