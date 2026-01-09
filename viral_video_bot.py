@@ -100,17 +100,16 @@ class ViralVideoBot:
         viral_videos = []
         
     def search_viral_videos_reddit(self):
-        """Search for viral videos on Reddit using RSS feeds (Most robust method)"""
+        """Search for viral videos on Reddit using RSS feeds (Direct DASH URL extraction)"""
         viral_videos = []
         import xml.etree.ElementTree as ET
+        import re
         
         for subreddit in self.config['reddit_subreddits']:
             try:
-                # Use RSS feed - Reddit's most open API
-                # Atom format is standard
+                # Use RSS feed
                 url = f"https://www.reddit.com/r/{subreddit}/top/.rss?t=day&limit=10"
                 
-                # Robust browser headers
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'application/xml,application/atom+xml,text/html,*/*;q=0.9'
@@ -120,20 +119,12 @@ class ViralVideoBot:
                 
                 if response.status_code == 200:
                     try:
-                        # Parse XML (Atom format)
                         root = ET.fromstring(response.text)
                         
-                        # Handle namespaces (Atom usually has one)
-                        # We'll just search by local name to be safe/lazy or use the known namespace
-                        # Reddit RSS is typically Atom 1.0 -> {http://www.w3.org/2005/Atom}
-                        
+                        # Handle namespaces
                         namespace = {'atom': 'http://www.w3.org/2005/Atom'} 
-                        # Fallback if namespace detection fails or changes
-                        # We simply iterate children
-                        
                         entries = root.findall('atom:entry', namespace)
                         if not entries:
-                            # Try without namespace or verify root tag
                             entries = root.findall('{http://www.w3.org/2005/Atom}entry')
                             
                         for entry in entries:
@@ -148,65 +139,42 @@ class ViralVideoBot:
                             if link_elem is None:
                                 link_elem = entry.find('{http://www.w3.org/2005/Atom}link')
                                 
-                            if link_elem is not None:
-                                permalink = link_elem.attrib.get('href', '')
-                                
-                                # Try to find DIRECT video url in content to bypass Reddit API 403
-                                direct_url = None
-                                content_elem = entry.find('atom:content', namespace)
-                                if content_elem is None:
-                                    content_elem = entry.find('{http://www.w3.org/2005/Atom}content')
-                                
-                                if content_elem is not None and content_elem.text:
-                                    import re
-                                    # Look for v.redd.it or youtube links in the content HTML
-                                    # This avoids yt-dlp needing to scape the reddit post (which is blocked)
-                                    # Regex for v.redd.it or youtube
-                                    match = re.search(r'(https?://v\.redd\.it/[\w]+|https?://(?:www\.)?youtube\.com/watch\?v=[\w-]+|https?://youtu\.be/[\w-]+)', content_elem.text)
-                                    if match:
-                                        direct_url = match.group(1)
-                                        logging.info(f"Resolved direct video URL from RSS: {direct_url}")
-                                
-                                # Generate ID
-                                try:
-                                    parts = permalink.split('/comments/')
-                                    if len(parts) > 1:
-                                        vid_id = parts[1].split('/')[0]
-                                    else:
-                                        vid_id = str(abs(hash(permalink)))[:8]
-                                except:
-                                    vid_id = str(abs(hash(permalink)))[:8]
-                                
+                            permalink = link_elem.attrib.get('href', '') if link_elem is not None else ''
+                            
+                            # Extract Direct URL from Content
+                            direct_url = None
+                            content_elem = entry.find('atom:content', namespace)
+                            if content_elem is None:
+                                content_elem = entry.find('{http://www.w3.org/2005/Atom}content')
+                            
+                            if content_elem is not None and content_elem.text:
+                                # Look for v.redd.it links
+                                video_match = re.search(r'https://v\.redd\.it/([a-zA-Z0-9]+)', content_elem.text)
+                                if video_match:
+                                    video_id = video_match.group(1)
+                                    # Construct DASH URL (try 720p)
+                                    direct_url = f'https://v.redd.it/{video_id}/DASH_720.mp4'
+                            
+                            if direct_url:
                                 video_info = {
-                                    'id': vid_id,
+                                    'id': video_id,
                                     'title': title,
-                                    'url': direct_url if direct_url else permalink,
+                                    'url': permalink,
+                                    'direct_url': direct_url,
                                     'score': 10000, 
                                     'source': 'reddit',
                                     'subreddit': subreddit
                                 }
                                 
-                                # Only add if we have a direct URL or it's a youtube link (which permalink is valid for? No, permalink is reddit post)
-                                # Actually, if we use permalink, yt-dlp fails.
-                                # So we should STRONGLY prefer direct_url.
-                                # If no direct_url found in RSS, we skip it to avoid 403 error loops.
-                                
-                                if direct_url and video_info['id'] not in self.processed_videos:
+                                if video_info['id'] not in self.processed_videos:
                                     viral_videos.append(video_info)
-                                    logging.info(f"Found viral video (RSS): {title[:50]}...")
-                                else:
-                                    # Debug log why skipped
-                                    if not direct_url:
-                                        logging.debug(f"Skipped {title[:30]} - No direct video link found in RSS")
+                                    logging.info(f"Found viral video: {title[:50]}... (Direct URL)")
                                     
                     except ET.ParseError as e:
                         logging.error(f"Error parsing RSS XML for r/{subreddit}: {e}")
-                        
                 else:
-                    logging.warning(f"Reddit RSS access failed: {response.status_code} for r/{subreddit}")
-                    
+                    logging.warning(f"Reddit RSS access failed: {response.status_code}")
                 time.sleep(2)
-                
             except Exception as e:
                 logging.error(f"Error searching Reddit r/{subreddit}: {str(e)}")
         
@@ -287,138 +255,147 @@ class ViralVideoBot:
         return video_list
     
     def download_video(self, video_info, output_path):
-        """Download video with multiple fallback strategies"""
+        """Direct download without yt-dlp - works on GitHub Actions"""
+        import subprocess
+        
         try:
-            logging.info(f"Downloading video: {video_info['title'][:50]}...")
-            
-            # Strategy 1: Reddit videos (via yt-dlp - works reliably)
-            if video_info['source'] == 'reddit':
+            # Handle YouTube videos separately if needed (using yt-dlp for YT is fine)
+            if 'youtube.com' in video_info.get('url', '') or 'youtu.be' in video_info.get('url', ''):
+                # Use existing yt-dlp logic for YouTube ONLY
+                logging.info("YouTube video detected, using yt-dlp...")
                 ydl_opts = {
                     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                     'outtmpl': output_path,
                     'quiet': True,
-                    'no_warnings': True,
-                    'overwrites': True,
-                    'socket_timeout': 30,
-                    # Explicitly point to the bundled ffmpeg
                     'ffmpeg_location': self.ffmpeg_path,
-                    # CRITICAL: Use browser user-agent for download request to avoid 403
-                    'http_headers': {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Referer': 'https://www.reddit.com/'
-                    }
                 }
-                
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([video_info['url']])
-                    
-                    if os.path.exists(output_path):
-                        logging.info(f"Downloaded successfully (Reddit): {output_path}")
-                        return True
-                        
-                except Exception as e:
-                    logging.error(f"yt-dlp Reddit download failed: {str(e)}")
-                    # Fallback to requests if yt-dlp fails (rare)
-                    pass
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([video_info['url']])
+                return os.path.exists(output_path)
+
+            direct_url = video_info.get('direct_url')
+            if not direct_url and 'v.redd.it' in video_info.get('url', ''):
+                # Fallback: if we just have a v.redd.it url but not the DASH url
+                direct_url = video_info['url']
+                if not direct_url.endswith('.mp4'):
+                     direct_url += '/DASH_720.mp4'
+
+            if not direct_url:
+                logging.error("No direct URL found for Reddit video")
+                return False
             
-            # Strategy 2: YouTube videos with enhanced anti-detection
-            elif video_info['source'] == 'youtube':
-                proxy_url = os.getenv('PROXY_URL')  # Optional proxy from GitHub Secrets
+            logging.info(f"Direct download from: {direct_url}")
+            
+            # Setup headers to mimic browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Range': 'bytes=0-',
+                'Referer': 'https://www.reddit.com/',
+                'Origin': 'https://www.reddit.com'
+            }
+            
+            # Create session with retries
+            session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(max_retries=3)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+            
+            # Download video stream
+            logging.info("Starting download...")
+            response = session.get(direct_url, headers=headers, stream=True, timeout=60)
+            
+            if response.status_code in [200, 206]:
+                with open(output_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk: f.write(chunk)
                 
-                # Base yt-dlp options
-                ydl_opts = {
-                    'format': 'best[ext=mp4][height<=720]',
-                    'outtmpl': str(output_path),
-                    'overwrites': True,
-                    'socket_timeout': 30,
-                    'retries': 3,
-                    'fragment_retries': 3,
-                }
-                
-                # Add proxy if available (bypasses bot detection)
-                if proxy_url:
-                    logging.info("Using proxy for YouTube download")
-                    ydl_opts['proxy'] = proxy_url
-                
-                # Enhanced anti-detection: Spoof real Android YouTube app
-                ydl_opts['http_headers'] = {
-                    'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; en_US) gzip',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-us,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Sec-Fetch-Mode': 'navigate',
-                }
-                
-                # Use android client (best compatibility for avoiding blocks)
-                ydl_opts['extractor_args'] = {
-                    'youtube': {
-                        'player_client': ['android', 'ios'],
-                    },
-                    'reddit': {
-                        'user_agent': ['android'] 
-                    }
-                }
-                
-                # Force IPv4 and use specific user agent for the http request
-                ydl_opts['force_ipv4'] = True
-                
-                # Update Referer to be the specific permalink if available, else generic
-                # We need to pass permalink from video_info if we have it
-                # But here we only have video_info['url'] which might be the direct link
-                # We'll try to use the direct link's base or just generic reddit
-                
-                # Check if we can reconstruct permalink or just use generic
-                # Actually, providing the exact post permalink as referer is verified to help
-                
-                # We will trust the passed referer in headers
-                
-                # Add specific headers for v.redd.it
-                ydl_opts['http_headers'] = {
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Referer': 'https://www.reddit.com/',
-                    'Origin': 'https://www.reddit.com'
-                }
+                # Download Audio
+                audio_url = direct_url.replace('DASH_720.mp4', 'DASH_audio.mp4')
+                # Handle generic replacement if 720 not in name
+                if 'DASH_audio.mp4' not in audio_url:
+                     audio_url = direct_url.rsplit('/', 1)[0] + '/DASH_audio.mp4'
+
+                audio_path = str(output_path).replace('.mp4', '_audio.mp4')
                 
                 try:
-                    # Strategy for v.redd.it: Try HLS playlist FIRST (more robust vs blocks)
-                    if "v.redd.it" in video_info['url']:
-                        try:
-                            # Construct HLS URL locally
-                            hls_url = video_info['url'].rstrip('/') + "/HLSPlaylist.m3u8"
-                            logging.info(f"Prioritizing HLS playlist download for v.redd.it: {hls_url}")
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                                ydl.download([hls_url])
-                            
-                            if os.path.exists(output_path):
-                                logging.info(f"Downloaded successfully via HLS: {output_path}")
-                                return True
-                        except Exception as hls_e:
-                            logging.warning(f"HLS download failed: {hls_e}. Falling back to standard URL...")
+                    logging.info(f"Downloading audio: {audio_url}")
+                    audio_res = session.get(audio_url, headers=headers, stream=True, timeout=30)
                     
-                    # Standard download (Fallback for HLS failure OR non-v.redd.it links)
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([video_info['url']])
-                    
-                    if os.path.exists(output_path):
-                        logging.info(f"Downloaded successfully: {output_path}")
-                        return True
+                    if audio_res.status_code == 200:
+                        with open(audio_path, 'wb') as f:
+                            for chunk in audio_res.iter_content(chunk_size=8192):
+                                if chunk: f.write(chunk)
+                        
+                        logging.info("Merging audio...")
+                        temp_output = str(output_path).replace('.mp4', '_merged.mp4')
+                        
+                        # Merge using ffmpeg
+                        cmd = [
+                            self.ffmpeg_path, '-i', output_path, '-i', audio_path,
+                            '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental',
+                            '-y', temp_output
+                        ]
+                        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        
+                        # Replace
+                        if os.path.exists(temp_output):
+                            os.remove(output_path)
+                            os.rename(temp_output, output_path)
+                            os.remove(audio_path)
+                            logging.info("Merge successful")
                     else:
-                        logging.error("Download failed - file not created")
-                        return False
+                        logging.warning("No audio track found")
                         
                 except Exception as e:
-                    if "Sign in to confirm" in str(e) and not proxy_url:
-                        logging.warning("Bot detection triggered. Consider adding PROXY_URL secret for YouTube downloads.")
-                        logging.info("Tip: Set PROXY_URL in GitHub Secrets (format: http://user:pass@proxy.com:port)")
-                    raise  # Re-raise to be caught by outer exception handler
-            
-            return False
-            
+                    # Non-fatal audio error
+                    logging.warning(f"Audio merge failed: {e}")
+                    if os.path.exists(audio_path): os.remove(audio_path)
+                
+                return True
+                
+            elif response.status_code == 403:
+                logging.error("403 Forbidden on direct download. Trying FFmpeg with HLS Playlist...")
+                
+                # Fallback: Use FFmpeg to download HLS stream directly
+                # This bypasses direct file blocks and handles the playlist
+                if 'v.redd.it' in direct_url:
+                    try:
+                        # Construct HLS URL (base check)
+                        base_url = direct_url.split('/DASH')[0]
+                        hls_url = f"{base_url}/HLSPlaylist.m3u8"
+                        
+                        logging.info(f"Attempting HLS download via FFmpeg: {hls_url}")
+                        
+                        cmd = [
+                            self.ffmpeg_path, '-i', hls_url,
+                            '-c', 'copy', '-bsf:a', 'aac_adtstoasc',
+                            '-y', output_path
+                        ]
+                        
+                        # Run ffmpeg (mimicking a browser via headers if possible, but ffmpeg supports limited headers)
+                        # We rely on ffmpeg's native HLS handling.
+                        # Sometimes adding user-agent to ffmpeg helps: -user_agent "..."
+                        cmd.extend(['-user_agent', headers['User-Agent']])
+                        
+                        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                        
+                        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                            logging.info(f"✓ HLS Download successful: {output_path}")
+                            return True
+                    except subprocess.CalledProcessError as e:
+                        logging.error(f"FFmpeg HLS download failed: {e.stderr}")
+                    except Exception as e:
+                        logging.error(f"HLS fallback error: {e}")
+                
+                return False
+            else:
+                logging.error(f"Download failed: {response.status_code}")
+                return False
+
         except Exception as e:
-            logging.error(f"Error downloading video: {str(e)}")
+            logging.error(f"Download error: {str(e)}")
             return False
     
     def create_text_overlay(self, duration, width, height):
